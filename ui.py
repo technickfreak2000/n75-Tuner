@@ -1,8 +1,4 @@
-"""
-Defines the main Tkinter-based UI, including thresholds, buttons,
-and calls into table.py and csv.py.
-"""
-
+#!/usr/bin/env python3
 import tkinter as tk
 from tkinter import filedialog
 
@@ -26,8 +22,10 @@ class VAGEDCSuiteDataViewer(tk.Tk):
         main_frame = tk.Frame(self)
         main_frame.pack(fill=tk.BOTH, expand=True)
 
-        # 1) --- Toolbar (left side) ---
+        # --- Toolbar (left side) ---
         toolbar_frame = tk.Frame(main_frame, bg="#f0f0f0", width=150)
+        # Force a static width.
+        toolbar_frame.pack_propagate(False)
         toolbar_frame.pack(side=tk.LEFT, fill=tk.Y)
 
         # Threshold 1
@@ -43,21 +41,6 @@ class VAGEDCSuiteDataViewer(tk.Tk):
         self.th2_var = tk.StringVar(value=str(DEFAULT_THRESHOLD2))
         th2_entry = tk.Entry(toolbar_frame, textvariable=self.th2_var, width=10)
         th2_entry.pack(anchor="w", pady=(0, 10))
-
-        # --- Mode Selector ---
-        mode_label = tk.Label(toolbar_frame, text="Display Mode:")
-        mode_label.pack(anchor="w")
-        self.mode_var = tk.StringVar(value="Show original map")
-        # Trace changes to the mode variable:
-        self.mode_var.trace_add("write", self.mode_changed)
-
-        mode_menu = tk.OptionMenu(
-            toolbar_frame,
-            self.mode_var,
-            "Show original map",
-            "Show original map color change"
-        )
-        mode_menu.pack(anchor="w", pady=(0, 10))
 
         # Button: "Paste from VAGEDCSuite"
         paste_button = tk.Button(
@@ -75,11 +58,41 @@ class VAGEDCSuiteDataViewer(tk.Tk):
         )
         pick_csv_button.pack(pady=10, fill=tk.X)
 
-        # 2) --- The Table (right side) ---
+        # --- Mode Selector ---
+        mode_label = tk.Label(toolbar_frame, text="Display Mode:")
+        mode_label.pack(anchor="w")
+        # Now we include six modes.
+        self.mode_options = [
+            "Show original map",
+            "Show original map color change",
+            "Show updated map",
+            "Show updated map color change",
+            "Show fixed map",
+            "Show fixed map color change"
+        ]
+        self.mode_var = tk.StringVar(value=self.mode_options[0])
+        # Trace changes so that the table updates immediately on selection change.
+        self.mode_var.trace_add("write", self.mode_changed)
+        mode_menu = tk.OptionMenu(
+            toolbar_frame,
+            self.mode_var,
+            *self.mode_options
+        )
+        mode_menu.pack(anchor="w", pady=(0, 10))
+
+        # --- Fix table Button ---
+        fix_button = tk.Button(toolbar_frame, text="Fix table", command=self.fix_table)
+        fix_button.pack(pady=10, fill=tk.X)
+
+        # --- The Table (right side) ---
         self.data_table = DataTable(main_frame)
 
+        # Store the last pasted table (a 2D list of strings) and CSV result.
+        self.last_pasted_data = None
+        self.color_table = None
+
     def paste_from_clipboard(self):
-        """Reads specialized data format from clipboard, updates the table cells/colors."""
+        """Reads specialized data from clipboard and updates the table."""
         try:
             data_str = self.clipboard_get().strip()
         except tk.TclError:
@@ -96,7 +109,6 @@ class VAGEDCSuiteDataViewer(tk.Tk):
 
         row_count = len(ROW_HEADERS)
         col_count = len(COL_HEADERS)
-
         data_matrix = [
             ["" for _ in range(col_count)] 
             for __ in range(row_count)
@@ -106,7 +118,6 @@ class VAGEDCSuiteDataViewer(tk.Tk):
             parts = chunk.split(':')
             if len(parts) != 3:
                 continue
-
             col_str, row_str, val_str = parts
             try:
                 col = int(col_str)
@@ -120,23 +131,14 @@ class VAGEDCSuiteDataViewer(tk.Tk):
                 cell_text = f"{num_value:.2f}".replace('.', ',') + "%"
                 data_matrix[row][col] = cell_text
 
-        # Store the pasted data so we can reapply it later.
         self.last_pasted_data = data_matrix
-
-        # Update the table with the pasted data.
-        self.data_table.update_table(data_matrix)
-
-        # If currently in the "color change" mode, update colors immediately.
-        if self.mode_var.get() == "Show original map color change":
-            if hasattr(self, "color_table") and self.color_table is not None:
-                self.data_table.update_colors_from_csv(self.color_table)
-            else:
-                print("CSV data not loaded. Please pick a CSV file first.")
+        # Update the display based on the current mode.
+        self.mode_changed()
 
     def pick_csv_file(self):
         """
-        Opens a file dialog to pick a CSV file and parse it.
-        Output is printed to console and the averaged result is stored.
+        Opens a file dialog to pick a CSV file, parses it,
+        and stores the averaged result from parse_csv.
         """
         file_path = filedialog.askopenfilename(
             title="Select CSV File",
@@ -145,33 +147,67 @@ class VAGEDCSuiteDataViewer(tk.Tk):
         if not file_path:
             return
 
-        # Convert threshold inputs
         try:
             th1 = float(self.th1_var.get())
         except ValueError:
             th1 = DEFAULT_THRESHOLD1
-
         try:
             th2 = float(self.th2_var.get())
         except ValueError:
             th2 = DEFAULT_THRESHOLD2
 
-        # Save the averaged CSV table for use in color mapping.
         self.color_table = parse_csv(file_path, th1, th2)
+        if self.last_pasted_data is not None:
+            self.mode_changed()
 
     def mode_changed(self, *args):
         """
-        Callback triggered when the display mode selection changes.
-        If the mode is set to "Show original map color change" and CSV data is loaded,
-        update the table using the CSV color scheme. Otherwise, revert to the original table.
+        Callback when the display mode selection changes.
+        Updates the table based on the chosen mode.
         """
         new_mode = self.mode_var.get()
-        if new_mode == "Show original map color change":
-            if hasattr(self, "color_table") and self.color_table is not None:
+        if new_mode == "Show original map":
+            if self.last_pasted_data:
+                self.data_table.update_table(self.last_pasted_data)
+        elif new_mode == "Show original map color change":
+            if self.last_pasted_data:
+                self.data_table.update_table(self.last_pasted_data)
+                if self.color_table is not None:
+                    self.data_table.update_colors_from_csv(self.color_table)
+                else:
+                    print("CSV data not loaded; cannot update color change mode.")
+        elif new_mode == "Show updated map":
+            if self.last_pasted_data and self.color_table is not None:
+                self.data_table.update_table_with_sum(self.last_pasted_data, self.color_table, use_csv_color=False)
+            else:
+                print("Either pasted data or CSV data is missing.")
+        elif new_mode == "Show updated map color change":
+            if self.last_pasted_data and self.color_table is not None:
+                self.data_table.update_table_with_sum(self.last_pasted_data, self.color_table, use_csv_color=True)
                 self.data_table.update_colors_from_csv(self.color_table)
             else:
-                print("CSV data not loaded; cannot update color change mode.")
-        else:  # new_mode is "Show original map"
-            if hasattr(self, "last_pasted_data"):
-                self.data_table.update_table(self.last_pasted_data)
+                print("Either pasted data or CSV data is missing.")
+        elif new_mode == "Show fixed map":
+            if self.last_pasted_data and self.color_table is not None:
+                self.data_table.fix_table()
+            else:
+                print("Either pasted data or CSV data is missing.")
+        elif new_mode == "Show fixed map color change":
+            if self.last_pasted_data and self.color_table is not None:
+                self.data_table.fix_table()
+                self.data_table.update_colors_from_csv(self.color_table)
+            else:
+                print("Either pasted data or CSV data is missing.")
 
+    def fix_table(self):
+        """Callback for the 'Fix table' button. Changes view to Show fixed map."""
+        self.data_table.fix_table()
+        self.mode_var.set("Show fixed map")
+
+def main():
+    """Entry point for the application."""
+    app = VAGEDCSuiteDataViewer()
+    app.mainloop()
+
+if __name__ == "__main__":
+    main()
