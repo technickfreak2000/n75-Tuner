@@ -232,7 +232,7 @@ def parse_csv(file_path, th1, th2):
     print_distributed_table(avg_result, ROW_HEADERS, COL_HEADERS)
 
     print("--- Finished parsing CSV ---")
-    return avg_result
+    return distributed_results
 
 def weight(lower, upper, value):
     """

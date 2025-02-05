@@ -9,7 +9,11 @@ from config import (
     DEFAULT_THRESHOLD2
 )
 from table import DataTable
-from csv_handler import parse_csv
+from csv_handler import (
+    parse_csv,
+    average_distributed_results,
+    print_distributed_table
+)
 
 class VAGEDCSuiteDataViewer(tk.Tk):
     def __init__(self):
@@ -151,14 +155,15 @@ class VAGEDCSuiteDataViewer(tk.Tk):
 
     def pick_csv_file(self):
         """
-        Opens a file dialog to pick a CSV file, parses it,
-        and stores the averaged result from parse_csv.
+        Opens a file dialog to pick one or more CSV files, parses each one,
+        and stores the averaged result from all CSV files.
         """
-        file_path = filedialog.askopenfilename(
-            title="Select CSV File",
+        # Use askopenfilenames (note the plural) to allow multiple file selection.
+        file_paths = filedialog.askopenfilenames(
+            title="Select CSV Files",
             filetypes=[("CSV Files", ("*.csv", "*.CSV")), ("All Files", "*.*")]
         )
-        if not file_path:
+        if not file_paths:
             return
 
         try:
@@ -170,9 +175,25 @@ class VAGEDCSuiteDataViewer(tk.Tk):
         except ValueError:
             th2 = DEFAULT_THRESHOLD2
 
-        self.color_table = parse_csv(file_path, th1, th2)
+        # Accumulate distributed results from each CSV file.
+        all_distributed = []
+        for file_path in file_paths:
+            # parse_csv returns a list of dictionaries (distributed_results) for that file.
+            distributed_results = parse_csv(file_path, th1, th2)
+            # Extend our overall list.
+            all_distributed.extend(distributed_results)
+
+        # Average the accumulated results.
+        avg_parsed_data = average_distributed_results(all_distributed, ROW_HEADERS, COL_HEADERS)
+        print("\n--- Averaged Distributed Table - Final ---")
+        print_distributed_table(avg_parsed_data, ROW_HEADERS, COL_HEADERS)
+
+        self.color_table = avg_parsed_data
+
+        # Update the table view (if pasted data already exists).
         if self.last_pasted_data is not None:
             self.mode_changed()
+
 
     def mode_changed(self, *args):
         """
