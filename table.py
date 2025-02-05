@@ -101,3 +101,43 @@ class DataTable:
                 else:
                     # Non-numeric => white background
                     lbl.config(bg="white")
+
+    def update_colors_from_csv(self, csv_table):
+        """
+        Updates the cell background colors using the values from csv_table.
+        Color mapping:
+        - A cell value of 0 is green (#00ff00).
+        - For positive values, 0 maps to green and the highest positive maps to red.
+        - For negative values, 0 maps to green and the most negative maps to blue.
+        """
+        # Compute maximum positive and minimum negative values
+        pos_values = [v for v in csv_table.values() if v > 0]
+        neg_values = [v for v in csv_table.values() if v < 0]
+        max_positive = max(pos_values) if pos_values else 0
+        min_negative = min(neg_values) if neg_values else 0
+
+        # Loop through each cell using the row and column headers.
+        for i, row_header in enumerate(self.row_headers):
+            for j, col_header in enumerate(self.col_headers):
+                value = csv_table.get((row_header, col_header), 0)
+                if value == 0:
+                    # 0 maps to green.
+                    color = "#00ff00"
+                elif value > 0:
+                    # Scale: 0 (green) to max_positive (red)
+                    fraction = value / max_positive if max_positive != 0 else 0
+                    red = int(255 * fraction)
+                    green = 255 - red
+                    blue = 0
+                    color = f"#{red:02x}{green:02x}{blue:02x}"
+                else:  # value < 0
+                    # Scale: 0 (green) to min_negative (blue)
+                    # Since both value and min_negative are negative, their ratio is positive.
+                    fraction = value / min_negative if min_negative != 0 else 0
+                    blue = int(255 * fraction)
+                    green = 255 - blue
+                    red = 0
+                    color = f"#{red:02x}{green:02x}{blue:02x}"
+
+                # Update the cell background.
+                self.cell_labels[i][j].config(bg=color)

@@ -44,6 +44,21 @@ class VAGEDCSuiteDataViewer(tk.Tk):
         th2_entry = tk.Entry(toolbar_frame, textvariable=self.th2_var, width=10)
         th2_entry.pack(anchor="w", pady=(0, 10))
 
+        # --- Mode Selector ---
+        mode_label = tk.Label(toolbar_frame, text="Display Mode:")
+        mode_label.pack(anchor="w")
+        self.mode_var = tk.StringVar(value="Show original map")
+        # Trace changes to the mode variable:
+        self.mode_var.trace_add("write", self.mode_changed)
+
+        mode_menu = tk.OptionMenu(
+            toolbar_frame,
+            self.mode_var,
+            "Show original map",
+            "Show original map color change"
+        )
+        mode_menu.pack(anchor="w", pady=(0, 10))
+
         # Button: "Paste from VAGEDCSuite"
         paste_button = tk.Button(
             toolbar_frame, 
@@ -71,7 +86,6 @@ class VAGEDCSuiteDataViewer(tk.Tk):
             print("No valid clipboard data.")
             return
 
-        # Must start w/ '2' and end w/ '~'
         if not (data_str.startswith("2") and data_str.endswith("~")):
             print("Invalid data pasted!")
             return
@@ -83,7 +97,6 @@ class VAGEDCSuiteDataViewer(tk.Tk):
         row_count = len(ROW_HEADERS)
         col_count = len(COL_HEADERS)
 
-        # Prepare empty data matrix
         data_matrix = [
             ["" for _ in range(col_count)] 
             for __ in range(row_count)
@@ -102,20 +115,28 @@ class VAGEDCSuiteDataViewer(tk.Tk):
             except ValueError:
                 continue
 
-            # Check range
             if 0 <= row < row_count and 0 <= col < col_count:
-                # Transform => (10000 - val)/100 => "xx,xx%"
                 num_value = (10000 - val) / 100.0
                 cell_text = f"{num_value:.2f}".replace('.', ',') + "%"
                 data_matrix[row][col] = cell_text
 
-        # Update the table
+        # Store the pasted data so we can reapply it later.
+        self.last_pasted_data = data_matrix
+
+        # Update the table with the pasted data.
         self.data_table.update_table(data_matrix)
+
+        # If currently in the "color change" mode, update colors immediately.
+        if self.mode_var.get() == "Show original map color change":
+            if hasattr(self, "color_table") and self.color_table is not None:
+                self.data_table.update_colors_from_csv(self.color_table)
+            else:
+                print("CSV data not loaded. Please pick a CSV file first.")
 
     def pick_csv_file(self):
         """
         Opens a file dialog to pick a CSV file and parse it.
-        Output is printed to console.
+        Output is printed to console and the averaged result is stored.
         """
         file_path = filedialog.askopenfilename(
             title="Select CSV File",
@@ -135,4 +156,22 @@ class VAGEDCSuiteDataViewer(tk.Tk):
         except ValueError:
             th2 = DEFAULT_THRESHOLD2
 
-        parse_csv(file_path, th1, th2)
+        # Save the averaged CSV table for use in color mapping.
+        self.color_table = parse_csv(file_path, th1, th2)
+
+    def mode_changed(self, *args):
+        """
+        Callback triggered when the display mode selection changes.
+        If the mode is set to "Show original map color change" and CSV data is loaded,
+        update the table using the CSV color scheme. Otherwise, revert to the original table.
+        """
+        new_mode = self.mode_var.get()
+        if new_mode == "Show original map color change":
+            if hasattr(self, "color_table") and self.color_table is not None:
+                self.data_table.update_colors_from_csv(self.color_table)
+            else:
+                print("CSV data not loaded; cannot update color change mode.")
+        else:  # new_mode is "Show original map"
+            if hasattr(self, "last_pasted_data"):
+                self.data_table.update_table(self.last_pasted_data)
+
