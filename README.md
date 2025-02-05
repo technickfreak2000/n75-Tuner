@@ -6,3 +6,7 @@ After having the turbo changed by an official dealer i noticed my boost is all o
 I do not encourage people to just screw with these settings, especially if you do not know if there might be a hardware issue - as in my case. 
 If your engine blows up, its not on me, but please try to avoid it. It's not just bad for the environment, you can also seriously endanger others. 
 Rapid unscheduled disassembly mostly involves heavy chunks of metal flying arround at ridiculous speeds. 
+
+```
+python main.py
+```
