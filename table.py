@@ -241,14 +241,14 @@ class DataTable:
         else:
             self.update_colors_from_csv(csv_table)
 
-    def fix_table(self):
+    def fix_table(self, apply_column_fix=True):
         """
         Fixes the updated table as follows:
           1. For each cell, round the updated value using standard rounding
              (so 19,37 → 19 and 19,98 → 20).
-          2. Then, for each column (iterating from bottom to top), if the cell above
-             is not at least 1 greater than the cell below, adjust it to be exactly 1 more.
-             This column-fixing is applied only to cells with values above 20 (cells ≤20 are ignored).
+          2. Then, if apply_column_fix is True, for each column (iterating from bottom to top),
+             if the cell above is not at least 1 greater than the cell below, adjust it to be exactly 1 more.
+             (This column-fixing is applied only to cells with values above 20; cells with value 20 or below are ignored.)
         After fixing, each cell’s tooltip is updated to show:
           "old value -> new value -> new value rounded -> fixed value"
         The fixed values are displayed as XX,XX%.
@@ -260,7 +260,6 @@ class DataTable:
         fixed = [[0 for _ in range(num_cols)] for _ in range(num_rows)]
 
         # First, for each cell, get the updated value (from lbl.new_value) and round it.
-        # Use standard rounding (so that 19,37 rounds to 19 and 19,98 rounds to 20).
         for i in range(num_rows):
             for j in range(num_cols):
                 lbl = self.cell_labels[i][j]
@@ -275,14 +274,15 @@ class DataTable:
                 rounded[i][j] = round(new_val)
                 fixed[i][j] = rounded[i][j]
 
-        # Then, for each column, from bottom to top,
-        # adjust only cells whose values are above 20.
-        for j in range(num_cols):
-            for i in range(num_rows - 1, 0, -1):
-                # Only adjust if both the current cell and the one above are greater than 20.
-                if fixed[i][j] > 20 and fixed[i-1][j] > 20:
-                    if fixed[i-1][j] < fixed[i][j] + 1:
-                        fixed[i-1][j] = fixed[i][j] + 1
+        # Then, if column adjustment is enabled, for each column, from bottom to top,
+        # adjust only cells with values above 20.
+        if apply_column_fix:
+            for j in range(num_cols):
+                for i in range(num_rows - 1, 0, -1):
+                    if fixed[i][j] > 20 and fixed[i-1][j] > 20:
+                        if fixed[i-1][j] < fixed[i][j] + 1:
+                            fixed[i-1][j] = fixed[i][j] + 1
+        # Otherwise, fixed remains equal to rounded.
 
         # Update each cell's text and tooltip.
         for i in range(num_rows):

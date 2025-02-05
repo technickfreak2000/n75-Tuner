@@ -16,14 +16,14 @@ class VAGEDCSuiteDataViewer(tk.Tk):
         super().__init__()
 
         self.title("VAGEDCSuite Data Viewer")
-        self.geometry("1100x500")
+        self.geometry("1200x500")
 
         # Main frame to hold left toolbar & the table
         main_frame = tk.Frame(self)
         main_frame.pack(fill=tk.BOTH, expand=True)
 
         # --- Toolbar (left side) ---
-        toolbar_frame = tk.Frame(main_frame, bg="#f0f0f0", width=150)
+        toolbar_frame = tk.Frame(main_frame, bg="#f0f0f0", width=200)
         # Force a static width.
         toolbar_frame.pack_propagate(False)
         toolbar_frame.pack(side=tk.LEFT, fill=tk.Y)
@@ -80,9 +80,23 @@ class VAGEDCSuiteDataViewer(tk.Tk):
         )
         mode_menu.pack(anchor="w", pady=(0, 10))
 
+        # --- Checkbox to toggle column adjustment ---
+        self.apply_column_fix_var = tk.BooleanVar(value=False)
+        column_fix_checkbox = tk.Checkbutton(
+            toolbar_frame,
+            text="Adjust column differences",
+            variable=self.apply_column_fix_var,
+            bg="#f0f0f0"
+        )
+        column_fix_checkbox.pack(anchor="w", pady=(10, 0))
+
         # --- Fix table Button ---
         fix_button = tk.Button(toolbar_frame, text="Fix table", command=self.fix_table)
         fix_button.pack(pady=10, fill=tk.X)
+
+        # --- Copy to VAGEDCSuite Button ---
+        copy_button = tk.Button(toolbar_frame, text="Copy to VAGEDCSuite", command=self.copy_to_vagedcsuite)
+        copy_button.pack(pady=10, fill=tk.X)
 
         # --- The Table (right side) ---
         self.data_table = DataTable(main_frame)
@@ -92,7 +106,7 @@ class VAGEDCSuiteDataViewer(tk.Tk):
         self.color_table = None
 
     def paste_from_clipboard(self):
-        """Reads specialized data from clipboard and updates the table."""
+        """Reads specialized data format from clipboard and updates the table."""
         try:
             data_str = self.clipboard_get().strip()
         except tk.TclError:
@@ -189,20 +203,53 @@ class VAGEDCSuiteDataViewer(tk.Tk):
                 print("Either pasted data or CSV data is missing.")
         elif new_mode == "Show fixed map":
             if self.last_pasted_data and self.color_table is not None:
-                self.data_table.fix_table()
+                self.data_table.fix_table(apply_column_fix=self.apply_column_fix_var.get())
             else:
                 print("Either pasted data or CSV data is missing.")
         elif new_mode == "Show fixed map color change":
             if self.last_pasted_data and self.color_table is not None:
-                self.data_table.fix_table()
+                self.data_table.fix_table(apply_column_fix=self.apply_column_fix_var.get())
                 self.data_table.update_colors_from_csv(self.color_table)
             else:
                 print("Either pasted data or CSV data is missing.")
 
     def fix_table(self):
-        """Callback for the 'Fix table' button. Changes view to Show fixed map."""
-        self.data_table.fix_table()
+        """Callback for the 'Fix table' button. Also changes the view to Show fixed map."""
+        self.data_table.fix_table(apply_column_fix=self.apply_column_fix_var.get())
         self.mode_var.set("Show fixed map")
+
+    def copy_to_vagedcsuite(self):
+        """
+        Reads the currently displayed map from the table,
+        converts each cell's value back into the VAGEDCSuite integer format,
+        and copies the resulting string to the clipboard.
+        The conversion is the reverse of what 'Paste from VAGEDCSuite' does.
+        """
+        chunks = []
+        # Iterate over the table's cells.
+        for i, row in enumerate(self.data_table.cell_labels):
+            for j, lbl in enumerate(row):
+                text = lbl.cget("text")
+                if text and text.endswith("%"):
+                    # Remove the "%" and replace comma with dot.
+                    try:
+                        num_value = float(text.rstrip("%").replace(",", "."))
+                    except ValueError:
+                        continue
+                    # Reverse the transformation: 
+                    # pasted: num_value = (10000 - val) / 100  ==>  val = 10000 - num_value * 100
+                    val_int = int(round(10000 - num_value * 100))
+                    chunk = f"{j}:{i}:{val_int}"
+                    chunks.append(chunk)
+        if chunks:
+            # Join chunks with ":~", prefix with "2" and suffix with "~"
+            result = "2" + ":~".join(chunks) + "~"
+            self.clipboard_clear()
+            self.clipboard_append(result)
+            print("Copied to clipboard:")
+            print(result)
+        else:
+            print("No cell values to copy.")
 
 def main():
     """Entry point for the application."""
